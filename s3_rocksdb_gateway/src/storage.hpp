@@ -56,6 +56,10 @@ public:
                   ObjectMeta* out_meta,
                   std::string* err);
 
+  bool get_object_data(std::string_view bucket, std::string_view key,
+                       std::string* out_data,
+                       std::string* err);
+
   bool head_object(std::string_view bucket, std::string_view key,
                    ObjectMeta* out_meta,
                    std::string* err);

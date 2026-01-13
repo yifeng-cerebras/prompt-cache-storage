@@ -227,15 +227,17 @@ bool RocksObjectStore::put_object(std::string_view bucket, std::string_view key,
     if (err) *err = "Invalid bucket/key";
     return false;
   }
-  if (!bucket_exists(bucket, err)) {
-    if (err && err->empty()) *err = "NoSuchBucket";
-    return false;
-  }
+  // POC perf: skip bucket existence check (saves 1 GET per PUT)
+  // if (!bucket_exists(bucket, err)) {
+  //   if (err && err->empty()) *err = "NoSuchBucket";
+  //   return false;
+  // }
 
   ObjectMeta m;
   m.size = static_cast<std::int64_t>(data.size());
   m.mtime = util::unix_now_seconds();
-  m.etag = util::md5_hex(data);
+  // POC perf: skip MD5 computation (saves ~0.1-0.2ms per 65KB)
+  m.etag = ""; // util::md5_hex(data);
   m.content_type = content_type.empty() ? "application/octet-stream" : std::string(content_type);
 
   rocksdb::WriteBatch batch;
@@ -310,6 +312,31 @@ bool RocksObjectStore::get_object(std::string_view bucket, std::string_view key,
 
   if (out_data) *out_data = std::move(data_val);
   if (out_meta) *out_meta = std::move(m);
+  return true;
+}
+
+bool RocksObjectStore::get_object_data(std::string_view bucket, std::string_view key,
+                                      std::string* out_data,
+                                      std::string* err) {
+  if (contains_nul(bucket) || contains_nul(key)) {
+    if (err) *err = "Invalid bucket/key";
+    return false;
+  }
+
+  std::string data_val;
+  auto start = Clock::now();
+  auto st = db_->Get(rocksdb::ReadOptions{}, data_key(bucket, key), &data_val);
+  observe_rocksdb(metrics_, "get", st, data_val.size(), start);
+  if (st.IsNotFound()) {
+    if (err) *err = "NoSuchKey";
+    return false;
+  }
+  if (!st.ok()) {
+    if (err) *err = st.ToString();
+    return false;
+  }
+
+  if (out_data) *out_data = std::move(data_val);
   return true;
 }
 

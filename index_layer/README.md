@@ -101,4 +101,6 @@ Notes:
 - No etcd integration yet.
 - Storage is external only; in-memory storage has been removed.
 - Pair with `../s3_rocksdb_gateway`.
- - Stress tool prefill data is random by default (to avoid unrealistic cache/compression effects).
+- Stress tool prefill data is random by default (to avoid unrealistic cache/compression effects).
+- Use `--skip-prefill` to avoid PUTs (assumes objects already exist in storage).
+ - Prefill logs progress and prints `prefill_ms` once complete.

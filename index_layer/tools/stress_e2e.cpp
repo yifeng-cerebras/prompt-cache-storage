@@ -60,6 +60,7 @@ static void Usage(const char* prog) {
     std::cerr << "  --timeout-ms n\n";
     std::cerr << "  --connect-timeout-ms n\n";
     std::cerr << "  --insecure\n";
+    std::cerr << "  --skip-prefill (do not PUT objects; assumes storage already populated)\n";
     std::cerr << "  --prometheus (emit Prometheus text to stdout)\n";
     std::cerr << "  --seed n\n";
 }
@@ -115,6 +116,7 @@ int main(int argc, char** argv) {
     if (ReadArg(argc, argv, "--seed", val)) cfg.seed = static_cast<unsigned>(std::stoul(val));
     cfg.create_bucket = HasFlag(argc, argv, "--create-bucket");
     cfg.insecure = HasFlag(argc, argv, "--insecure");
+    bool skip_prefill = HasFlag(argc, argv, "--skip-prefill");
     prometheus = HasFlag(argc, argv, "--prometheus");
 
     if (cfg.bytes_per_token == 0 && cfg.prompt_len > 0) {
@@ -139,6 +141,9 @@ int main(int argc, char** argv) {
     std::vector<std::vector<std::string>> prompts;
     prompts.reserve(static_cast<size_t>(cfg.objects));
 
+    auto prefill_start = std::chrono::steady_clock::now();
+    const int log_every = std::max(1, cfg.objects / 20);
+
     std::mt19937 prefill_rng(cfg.seed);
     std::uniform_int_distribution<int> byte_dist(0, 255);
 
@@ -152,8 +157,19 @@ int main(int argc, char** argv) {
         for (auto& b : data) {
             b = static_cast<uint8_t>(byte_dist(prefill_rng));
         }
-        cache.Store(tokens, data, "stress", 1);
+        cache.Store(tokens, data, "stress", 1, skip_prefill);
         prompts.emplace_back(std::move(tokens));
+
+        if (!skip_prefill && ((i + 1) % log_every == 0 || i + 1 == cfg.objects)) {
+            std::cout << "prefill " << (i + 1) << "/" << cfg.objects << "\n";
+        }
+    }
+
+    auto prefill_end = std::chrono::steady_clock::now();
+    double prefill_ms =
+        std::chrono::duration<double, std::milli>(prefill_end - prefill_start).count();
+    if (!skip_prefill) {
+        std::cout << "prefill_ms " << prefill_ms << "\n";
     }
 
     Metrics metrics;

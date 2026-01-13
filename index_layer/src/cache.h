@@ -49,7 +49,8 @@ public:
         const std::vector<std::string>& tokens,
         const std::vector<uint8_t>& data,
         const std::string& owner_id,
-        int priority
+        int priority,
+        bool skip_put = false
     );
 
     LookupResult Lookup(const std::vector<std::string>& tokens, int max_len_tokens = 0) const;

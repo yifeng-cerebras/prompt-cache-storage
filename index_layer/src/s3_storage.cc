@@ -28,6 +28,13 @@ std::string TrimTrailingSlash(const std::string& s) {
     return s;
 }
 
+CURL* ThreadCurlHandle() {
+    static thread_local CURL* curl = [] {
+        return curl_easy_init();
+    }();
+    return curl;
+}
+
 } // namespace
 
 S3Storage::S3Storage(Config cfg) : cfg_(std::move(cfg)) {
@@ -86,13 +93,18 @@ bool S3Storage::PerformRequest(const std::string& url,
                                std::vector<uint8_t>* out,
                                const std::string& range_header,
                                long* http_code) const {
-    CURL* curl = curl_easy_init();
+    CURL* curl = ThreadCurlHandle();
     if (!curl) {
         return false;
     }
 
+    curl_easy_reset(curl);
+
     struct curl_slist* headers = nullptr;
     headers = curl_slist_append(headers, "Content-Type: application/octet-stream");
+    if (body && (method == "PUT" || method == "POST")) {
+        headers = curl_slist_append(headers, "Expect:");
+    }
     if (!range_header.empty()) {
         headers = curl_slist_append(headers, ("Range: " + range_header).c_str());
     }
@@ -103,6 +115,9 @@ bool S3Storage::PerformRequest(const std::string& url,
     curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, cfg_.timeout_ms);
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, cfg_.connect_timeout_ms);
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+    curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
+    curl_easy_setopt(curl, CURLOPT_EXPECT_100_TIMEOUT_MS, 0L);
+    curl_easy_setopt(curl, CURLOPT_TCP_NODELAY, 1L);
 
     if (!cfg_.verify_tls) {
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
@@ -134,7 +149,6 @@ bool S3Storage::PerformRequest(const std::string& url,
     }
 
     curl_slist_free_all(headers);
-    curl_easy_cleanup(curl);
     return true;
 }
 

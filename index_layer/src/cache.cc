@@ -20,11 +20,14 @@ std::string PrefixMap::Store(
     const std::vector<std::string>& tokens,
     const std::vector<uint8_t>& data,
     const std::string& owner_id,
-    int priority
+    int priority,
+    bool skip_put
 ) {
     const std::string obj_id = HashBytesHex(data);
-    if (!storage_->Put(obj_id, data)) {
-        return "";
+    if (!skip_put) {
+        if (!storage_->Put(obj_id, data)) {
+            return "";
+        }
     }
 
     version_clock_++;

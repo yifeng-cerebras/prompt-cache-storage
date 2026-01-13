@@ -432,9 +432,8 @@ Response Api::handle(const Request& req) {
 
   if (req.method() == http::verb::get) {
     std::string data;
-    storage::ObjectMeta meta;
     std::string err;
-    if (!store_->get_object(pt.bucket, pt.key, &data, &meta, &err)) {
+    if (!store_->get_object_data(pt.bucket, pt.key, &data, &err)) {
       auto [st, code] = map_storage_error(err);
       std::string msg = (code == "NoSuchKey") ? "The specified key does not exist" : err;
       return s3_error(st, code, msg, resource, request_id, keep_alive, version);
@@ -459,9 +458,7 @@ Response Api::handle(const Request& req) {
 
     Response res{range ? http::status::partial_content : http::status::ok, version};
     res.set(http::field::server, "s3_rocksdb_gateway");
-    res.set(http::field::content_type, meta.content_type.empty() ? "application/octet-stream" : meta.content_type);
-    res.set("ETag", "\"" + meta.etag + "\"");
-    res.set(http::field::last_modified, util::rfc1123_gmt(meta.mtime));
+    res.set(http::field::content_type, "application/octet-stream");
     res.set("Accept-Ranges", "bytes");
     res.keep_alive(keep_alive);
 
