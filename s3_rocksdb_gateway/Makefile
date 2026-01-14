@@ -41,4 +41,4 @@ test: build
 	$(BUILD_DIR)/s3gw_test_range
 
 clean:
-	rm -rf $(BUILD_DIR)
+	rm -rf $(BUILD_DIR) $(ROOT_DIR)/bin

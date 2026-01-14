@@ -7,8 +7,6 @@
 #include <iomanip>
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
-#include <openssl/md5.h>
-#include <openssl/sha.h>
 #include <sstream>
 #include <string>
 
@@ -158,13 +156,41 @@ std::string trim_and_collapse_ws(std::string_view s) {
   return out;
 }
 
-std::vector<std::uint8_t> sha256_bin(std::string_view data) {
-  std::vector<std::uint8_t> out(SHA256_DIGEST_LENGTH);
-  SHA256_CTX ctx;
-  SHA256_Init(&ctx);
-  SHA256_Update(&ctx, data.data(), data.size());
-  SHA256_Final(out.data(), &ctx);
+static std::vector<std::uint8_t> digest_bin(const EVP_MD* md, std::string_view data) {
+  std::vector<std::uint8_t> out;
+  if (!md) return out;
+
+  EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+  if (!ctx) return out;
+
+  if (EVP_DigestInit_ex(ctx, md, nullptr) != 1) {
+    EVP_MD_CTX_free(ctx);
+    return out;
+  }
+  if (EVP_DigestUpdate(ctx, data.data(), data.size()) != 1) {
+    EVP_MD_CTX_free(ctx);
+    return out;
+  }
+
+  unsigned int len = 0;
+  int out_len = EVP_MD_size(md);
+  if (out_len <= 0) {
+    EVP_MD_CTX_free(ctx);
+    return out;
+  }
+  out.resize(static_cast<size_t>(out_len));
+  if (EVP_DigestFinal_ex(ctx, out.data(), &len) != 1) {
+    EVP_MD_CTX_free(ctx);
+    out.clear();
+    return out;
+  }
+  out.resize(static_cast<size_t>(len));
+  EVP_MD_CTX_free(ctx);
   return out;
+}
+
+std::vector<std::uint8_t> sha256_bin(std::string_view data) {
+  return digest_bin(EVP_sha256(), data);
 }
 
 std::string hex_lower(const std::vector<std::uint8_t>& bytes) {
@@ -196,9 +222,7 @@ std::vector<std::uint8_t> hmac_sha256(std::string_view key, std::string_view dat
 }
 
 std::string md5_hex(std::string_view data) {
-  unsigned char md[MD5_DIGEST_LENGTH];
-  MD5(reinterpret_cast<const unsigned char*>(data.data()), data.size(), md);
-  std::vector<std::uint8_t> v(md, md + MD5_DIGEST_LENGTH);
+  auto v = digest_bin(EVP_md5(), data);
   return hex_lower(v);
 }
 
