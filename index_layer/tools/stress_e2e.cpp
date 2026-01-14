@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
+#include <curl/curl.h>
 #include <iostream>
 #include <random>
 #include <string>
@@ -89,6 +90,52 @@ static double Percentile(std::vector<double>& values, double pct) {
     std::sort(values.begin(), values.end());
     size_t idx = static_cast<size_t>((pct / 100.0) * (values.size() - 1));
     return values[idx];
+}
+
+static size_t CurlWriteToString(char* ptr, size_t size, size_t nmemb, void* userdata) {
+    auto* out = static_cast<std::string*>(userdata);
+    out->append(ptr, size * nmemb);
+    return size * nmemb;
+}
+
+static bool FetchGatewayMetrics(const Config& cfg, std::string& out, std::string& err) {
+    std::string url = cfg.endpoint;
+    if (!url.empty() && url.back() == '/') {
+        url.pop_back();
+    }
+    url += "/metrics";
+
+    CURL* curl = curl_easy_init();
+    if (!curl) {
+        err = "curl_easy_init failed";
+        return false;
+    }
+
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, CurlWriteToString);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &out);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, cfg.timeout_ms);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, cfg.connect_timeout_ms);
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+    if (cfg.insecure) {
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+    }
+
+    CURLcode rc = curl_easy_perform(curl);
+    long status = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
+    curl_easy_cleanup(curl);
+
+    if (rc != CURLE_OK) {
+        err = curl_easy_strerror(rc);
+        return false;
+    }
+    if (status != 200) {
+        err = "HTTP " + std::to_string(status);
+        return false;
+    }
+    return true;
 }
 
 int main(int argc, char** argv) {
@@ -267,6 +314,32 @@ int main(int argc, char** argv) {
         std::cout << "p50_ms " << p50 << "\n";
         std::cout << "p95_ms " << p95 << "\n";
         std::cout << "p99_ms " << p99 << "\n";
+    }
+
+    std::string gw_metrics;
+    std::string gw_err;
+    if (FetchGatewayMetrics(cfg, gw_metrics, gw_err)) {
+        if (prometheus) {
+            std::cout << "# gateway_metrics_begin\n";
+            std::cout << gw_metrics;
+            if (!gw_metrics.empty() && gw_metrics.back() != '\n') {
+                std::cout << "\n";
+            }
+            std::cout << "# gateway_metrics_end\n";
+        } else {
+            std::cout << "gateway_metrics_begin\n";
+            std::cout << gw_metrics;
+            if (!gw_metrics.empty() && gw_metrics.back() != '\n') {
+                std::cout << "\n";
+            }
+            std::cout << "gateway_metrics_end\n";
+        }
+    } else {
+        if (prometheus) {
+            std::cout << "# gateway_metrics_error " << gw_err << "\n";
+        } else {
+            std::cout << "gateway_metrics_error " << gw_err << "\n";
+        }
     }
 
     return 0;

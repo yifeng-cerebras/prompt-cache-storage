@@ -103,4 +103,5 @@ Notes:
 - Pair with `../s3_rocksdb_gateway`.
 - Stress tool prefill data is random by default (to avoid unrealistic cache/compression effects).
 - Use `--skip-prefill` to avoid PUTs (assumes objects already exist in storage).
- - Prefill logs progress and prints `prefill_ms` once complete.
+- Prefill logs progress and prints `prefill_ms` once complete.
+- Stress tool auto-fetches `GET /metrics` from the gateway and prints it at the end.
